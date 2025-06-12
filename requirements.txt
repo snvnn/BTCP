@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+numpy
+ccxt
+streamlit
+matplotlib
+scikit-learn
+torch
+psycopg2-binary  # PostgreSQL 사용할 경우

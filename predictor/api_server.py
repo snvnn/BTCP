@@ -28,7 +28,7 @@ def predict_price():
     normed_input, mean, std = preprocessor.normalize(prices)
 
     # 3. 모델 예측
-    predicted = model_inference.predict(model=None, data=normed_input)
+    predicted = model_inference.predict(model=model, input_data=normed_input)
 
     # 4. 결과 반환
     return {

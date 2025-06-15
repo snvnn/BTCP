@@ -21,20 +21,20 @@ def predict_price():
     4. 결과 반환
     """
     # 1. 실시간 시세 수집
-    price_data = data_collector.get_binance_price()
-    close_price = price_data["close"]
+    price_data = data_collector.get_recent_prices()
+    prices = price_data["prices"]
 
     # 2. 전처리 (여기선 단순 정규화)
-    normed_input, mean, std = preprocessor.normalize([close_price] * 10)
+    normed_input, mean, std = preprocessor.normalize(prices)
 
     # 3. 모델 예측
-    predicted = model_inference.predict(model, normed_input)
+    predicted = model_inference.predict(model=None, data=normed_input)
 
     # 4. 결과 반환
     return {
         "timestamp": str(price_data["timestamp"]),
-        "price": close_price,
-        "normalized": normed_input,
-        "predicted": predicted,
-        "denormalized_prediction": predicted * std + mean  # 복원된 예측값
+        "price": prices,
+        "normalized": normed_input.tolist(),  # numpy array → list
+        "predicted": float(predicted),
+        "denormalized_prediction": float(predicted * std + mean)  # 복원된 예측값
     }

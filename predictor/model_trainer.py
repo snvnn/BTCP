@@ -1,91 +1,57 @@
 # predictor/model_trainer.py
-
+import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
 import numpy as np
-import os
-import time
+from datetime import datetime
 
-# 하이퍼파라미터 설정
-SEQ_LEN = 30
-BATCH_SIZE = 16
-EPOCHS = 100
-LR = 0.001
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'lstm_model.pth')
-
-
-# 학습용 데이터셋 정의
-class PriceDataset(Dataset):
-    def __init__(self, prices):
-        self.x = []
-        self.y = []
-        for i in range(len(prices) - SEQ_LEN):
-            self.x.append(prices[i:i+SEQ_LEN])
-            self.y.append(prices[i+SEQ_LEN])
-        self.x = torch.tensor(self.x, dtype=torch.float32)
-        self.y = torch.tensor(self.y, dtype=torch.float32).view(-1, 1)
-
-    def __len__(self):
-        return len(self.x)
-
-    def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]
-
-
-# LSTM 모델 정의
 class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=64, num_layers=2):
+    def __init__(self, input_size=1, hidden_size=32, output_size=1, num_layers=1):
         super().__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
+        self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         out, _ = self.lstm(x)
         return self.fc(out[:, -1, :])
 
+def create_sequences(data, window_size=20):
+    sequences = []
+    for i in range(len(data) - window_size):
+        seq = data[i:i+window_size]
+        label = data[i+window_size]
+        sequences.append((seq, label))
+    return sequences
 
-# 학습 함수 정의
-def train(prices):
-    print(f"🧪 학습 시작: 총 {EPOCHS} epochs, 데이터 길이: {len(prices)}")
+def train():
+    df = pd.read_csv("btc_prices.csv")
+    prices = df["close"].values
+    prices = (prices - prices.mean()) / prices.std()
 
-    dataset = PriceDataset(prices)
-    loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    sequences = create_sequences(prices, window_size=20)
+    X = np.array([s[0] for s in sequences])
+    y = np.array([s[1] for s in sequences])
+
+    X_tensor = torch.tensor(X).float().unsqueeze(-1)  # (N, 20, 1)
+    y_tensor = torch.tensor(y).float().unsqueeze(-1)  # (N, 1)
 
     model = LSTMModel()
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    start_time = time.time()
+    print(f"[{datetime.now()}] 🚀 Start training...")
 
-    for epoch in range(1, EPOCHS + 1):
-        total_loss = 0.0
-        for x_batch, y_batch in loader:
-            x_batch = x_batch.unsqueeze(-1)  # (batch, seq_len, 1)
-            output = model(x_batch)
-            loss = criterion(output, y_batch)
+    for epoch in range(10):
+        model.train()
+        output = model(X_tensor)
+        loss = criterion(output, y_tensor)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        print(f"[{datetime.now()}] Epoch {epoch+1}/10 - Loss: {loss.item():.6f}")
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    torch.save(model.state_dict(), "predictor/model.pt")
+    print(f"[{datetime.now()}] ✅ Model saved to predictor/model.pt")
 
-            total_loss += loss.item()
-
-        avg_loss = total_loss / len(loader)
-
-        # 진행률 출력
-        if epoch % 10 == 0 or epoch == 1 or epoch == EPOCHS:
-            sample_pred = output[0].item()
-            sample_target = y_batch[0].item()
-            print(f"[Epoch {epoch}/{EPOCHS}] Loss: {avg_loss:.6f} | 예측: {sample_pred:.2f}, 실제: {sample_target:.2f}")
-
-    end_time = time.time()
-    elapsed = end_time - start_time
-
-    # 모델 저장
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    torch.save(model.state_dict(), MODEL_PATH)
-
-    print(f"\n✅ 학습 완료! 모델 저장됨: {MODEL_PATH}")
-    print(f"⏱️ 총 학습 시간: {elapsed:.2f}초")
+if __name__ == "__main__":
+    train()

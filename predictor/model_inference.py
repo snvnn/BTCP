@@ -1,29 +1,25 @@
+# predictor/model_inference.py
 import torch
-import torch.nn as nn
-import os
 import numpy as np
-
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'lstm_model.pth')
-
-class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=64, num_layers=2):
-        super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
-
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        return self.fc(out[:, -1, :])
+import pandas as pd
+from .model_trainer import LSTMModel
 
 def load_model():
     model = LSTMModel()
-    model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device("cpu")))
+    model.load_state_dict(torch.load("predictor/model.pt"))
     model.eval()
     return model
 
-def predict(model, input_data):
-    x = torch.tensor(input_data, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-    with torch.no_grad():
-        pred = model(x)
-    return pred.item()
+def predict_recent():
+    df = pd.read_csv("btc_prices.csv")
+    prices = df["close"].values
+    norm_prices = (prices - prices.mean()) / prices.std()
+    input_seq = norm_prices[-20:]
+    input_tensor = torch.tensor(input_seq).float().unsqueeze(0).unsqueeze(-1)  # (1, 20, 1)
 
+    model = load_model()
+    with torch.no_grad():
+        output = model(input_tensor)
+    pred_norm = output.item()
+    pred_real = pred_norm * prices.std() + prices.mean()
+    return round(pred_real, 2)

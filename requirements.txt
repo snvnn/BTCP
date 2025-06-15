@@ -9,3 +9,4 @@ scikit-learn
 torch
 psycopg2-binary  # PostgreSQL 사용할 경우
 fastapi
+tqdm

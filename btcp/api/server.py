@@ -1,10 +1,15 @@
+"""FastAPI server exposing prediction endpoints."""
+
 from fastapi import FastAPI
-from predictor import data_collector, preprocessor, model_inference
+
+from btcp.data import collector
+from btcp.utils import preprocessor
+from btcp.model import inference
 
 app = FastAPI()
 
-# 서버가 시작되면서 모델을 메모리에 로딩
-model = model_inference.load_model()
+# Load model once when the server starts
+model = inference.load_trained_model()
 
 
 @app.get("/")
@@ -21,14 +26,14 @@ def predict_price():
     4. 결과 반환
     """
     # 1. 실시간 시세 수집
-    price_data = data_collector.get_recent_prices()
+    price_data = collector.get_recent_prices()
     prices = price_data["prices"]
 
     # 2. 전처리 (여기선 단순 정규화)
     normed_input, mean, std = preprocessor.normalize(prices)
 
     # 3. 모델 예측
-    predicted = model_inference.predict(model=model, input_data=normed_input)
+    predicted = inference.predict(model=model, input_data=normed_input)
 
     # 4. 결과 반환
     return {

@@ -3,7 +3,7 @@ import time
 import numpy as np
 from tensorflow.keras.models import load_model
 from sklearn.preprocessing import MinMaxScaler
-from realtime_fetcher import fetch_realtime_data
+from btcp.data.realtime import fetch_realtime_data
 
 SEQ_LENGTH = 60
 PRED_OFFSETS = [5, 15, 30, 60]

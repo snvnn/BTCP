@@ -1,4 +1,4 @@
-from data_collector import collect_historical_1m_data
+from btcp.data.collector import collect_historical_1m_data
 
 if __name__ == '__main__':
     df = collect_historical_1m_data(

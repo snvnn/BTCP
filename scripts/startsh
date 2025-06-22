@@ -4,4 +4,4 @@ which python                     # → ~/BTCP/venv/bin/python 여야 함
 which uvicorn                    # → ~/BTCP/venv/bin/uvicorn 여야 함
 
 # 이 상태에서 실행
-uvicorn predictor.api_server:app --reload
+uvicorn btcp.api.server:app --reload

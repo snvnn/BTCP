@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 *.h5
 .DS_Store
+/data/BTCUSDT_1m_full.csv
+/predictor/model.pt
+/bfg-1.14.0.jar
+/btc_prices.csv

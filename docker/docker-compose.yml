@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    container_name: btc_api_server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./model:/app/model
+    restart: always
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: ../Dockerfile.streamlit
+    container_name: btc_dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./model:/app/model
+    restart: always
+
+  db:
+     image: postgres:14
+     container_name: btc_db
+     environment:
+       POSTGRES_USER: user
+       POSTGRES_PASSWORD: password
+       POSTGRES_DB: btc_db
+     ports:
+       - "5432:5432"
+     volumes:
+       - ./db:/var/lib/postgresql/data

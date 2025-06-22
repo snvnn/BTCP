@@ -5,6 +5,8 @@ from tqdm import tqdm
 import time
 import os
 
+DEFAULT_LOOKBACK = 60  # minutes
+
 def fetch_binance_klines(symbol='BTCUSDT', interval='1m', start_ts=None, limit=1000):
     url = 'https://api.binance.com/api/v3/klines'
     params = {
@@ -61,3 +63,16 @@ def collect_historical_1m_data(symbol='BTCUSDT', start_date='2017-08-17', end_da
         print(f"✅ Saved full data to {filename}")
 
     return df
+
+
+def get_recent_prices(symbol: str = 'BTCUSDT', interval: str = '1m', lookback: int = DEFAULT_LOOKBACK):
+    """Fetch recent closing prices from Binance."""
+    data = fetch_binance_klines(symbol=symbol, interval=interval, limit=lookback)
+    df = pd.DataFrame(data, columns=[
+        "timestamp", "open", "high", "low", "close", "volume",
+        "close_time", "quote_asset_volume", "number_of_trades",
+        "taker_buy_base_volume", "taker_buy_quote_volume", "ignore"
+    ])
+    prices = df["close"].astype(float).tolist()
+    timestamp = pd.to_datetime(df.iloc[-1]["timestamp"], unit='ms')
+    return {"timestamp": timestamp, "prices": prices}

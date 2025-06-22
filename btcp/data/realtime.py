@@ -2,6 +2,7 @@
 from binance.client import Client
 import pandas as pd
 import os
+import requests
 
 API_KEY = os.getenv("BINANCE_API_KEY", "")
 API_SECRET = os.getenv("BINANCE_API_SECRET", "")
@@ -17,3 +18,12 @@ def fetch_realtime_data(symbol="BTCUSDT", interval="1m", lookback=60):
     ])
     df = df[['timestamp', 'close']].astype({'close': float})
     return df
+
+
+def fetch_current_price(symbol: str = "BTCUSDT") -> float:
+    """Return the latest close price for the symbol."""
+    url = "https://api.binance.com/api/v3/klines"
+    params = {"symbol": symbol, "interval": "1m", "limit": 1}
+    response = requests.get(url, params=params, timeout=10)
+    data = response.json()
+    return float(data[0][4])

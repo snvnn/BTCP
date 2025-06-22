@@ -4,7 +4,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: Dockerfile.api
+      dockerfile: docker/Dockerfile.api
     container_name: btc_api_server
     ports:
       - "8000:8000"
@@ -16,7 +16,7 @@ services:
   dashboard:
     build:
       context: ..
-      dockerfile: ../Dockerfile.streamlit
+      dockerfile: docker/Dockerfile.streamlit
     container_name: btc_dashboard
     ports:
       - "8501:8501"

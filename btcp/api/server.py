@@ -38,7 +38,7 @@ def predict_price():
     # 4. 결과 반환
     return {
         "timestamp": str(price_data["timestamp"]),
-        "price": prices,
+        "input_prices": prices,
         "normalized": normed_input.tolist(),  # numpy array → list
         "predicted": float(predicted),
         "denormalized_prediction": float(predicted * std + mean)  # 복원된 예측값

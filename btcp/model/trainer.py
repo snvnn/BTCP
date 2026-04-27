@@ -1,55 +1,87 @@
-import pandas as pd
-import numpy as np
-import os
-import matplotlib.pyplot as plt
-import tensorflow as tf
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
-from tensorflow.keras.callbacks import ModelCheckpoint
+"""Training utilities for the BTC prediction model."""
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+from __future__ import annotations
 
-# CSV 파일 경로
-CSV_PATH = "/home/yunh/BTCP/data/BTCUSDT_1m_full.csv"
-MODEL_DIR = "/home/yunh/BTCP/model"
-MODEL_PATH = os.path.join(MODEL_DIR, "lstm_model.h5")
+import json
+import pickle
+from datetime import datetime, timezone
+from pathlib import Path
 
-# 하이퍼파라미터
-SEQ_LENGTH = 60     # 과거 60분의 데이터를 보고
-PRED_OFFSETS = [5, 15, 30, 60]  # 예측할 미래 시점 (단위: 분)
+from btcp.config import settings
 
-def load_data():
-    df = pd.read_csv(CSV_PATH, parse_dates=['timestamp'])
-    df = df[['timestamp', 'close']].dropna()
-    df.sort_values('timestamp', inplace=True)
+# 기본 경로와 하이퍼파라미터
+DEFAULT_CSV_PATH = settings.data_dir / "BTCUSDT_1m_full.csv"
+DEFAULT_MODEL_DIR = settings.model_dir
+SEQ_LENGTH = settings.seq_length
+PRED_OFFSETS = [5, 15, 30, 60]
+
+
+def load_data(csv_path: Path = DEFAULT_CSV_PATH):
+    """Load historical close prices from CSV."""
+    import pandas as pd
+
+    df = pd.read_csv(csv_path, parse_dates=["timestamp"])
+    df = df[["timestamp", "close"]].dropna()
+    df.sort_values("timestamp", inplace=True)
     return df
 
-def preprocess_data(df):
+
+def preprocess_data(df, seq_length: int = SEQ_LENGTH, pred_offsets=None):
+    """Scale close prices and build supervised LSTM sequences."""
+    import numpy as np
+    from sklearn.preprocessing import MinMaxScaler
+
+    if pred_offsets is None:
+        pred_offsets = PRED_OFFSETS
+
     scaler = MinMaxScaler()
-    scaled = scaler.fit_transform(df[['close']])
+    scaled = scaler.fit_transform(df[["close"]])
 
-    X, y = [], []
-    for i in range(SEQ_LENGTH, len(scaled) - max(PRED_OFFSETS)):
-        X_seq = scaled[i - SEQ_LENGTH:i, 0]
-        y_seq = [scaled[i + offset, 0] for offset in PRED_OFFSETS]
-        X.append(X_seq)
-        y.append(y_seq)
+    x_values, y_values = [], []
+    for i in range(seq_length, len(scaled) - max(pred_offsets)):
+        x_seq = scaled[i - seq_length : i, 0]
+        y_seq = [scaled[i + offset, 0] for offset in pred_offsets]
+        x_values.append(x_seq)
+        y_values.append(y_seq)
 
-    X = np.array(X).reshape(-1, SEQ_LENGTH, 1)
-    y = np.array(y)
-    return X, y, scaler
+    x_array = np.array(x_values).reshape(-1, seq_length, 1)
+    y_array = np.array(y_values)
+    return x_array, y_array, scaler
+
 
 def build_model(input_shape, output_dim):
+    """Build and compile the default LSTM model."""
+    from tensorflow.keras.layers import LSTM, Dense
+    from tensorflow.keras.models import Sequential
+
     model = Sequential()
     model.add(LSTM(64, return_sequences=False, input_shape=input_shape))
-    model.add(Dense(output_dim))  # 여러 시점 출력
-    model.compile(optimizer='adam', loss='mse')
+    model.add(Dense(output_dim))
+    model.compile(optimizer="adam", loss="mse")
     return model
 
-def train():
-    # GPU 메모리 점유 방식을 설정 (필수는 아니지만 안정성 향상)
-    gpus = tf.config.list_physical_devices('GPU')
+
+def save_artifacts(model, scaler, model_dir: Path, metadata: dict) -> None:
+    """Save model, scaler, and metadata into one artifact directory."""
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model.save(model_dir / "model.keras")
+    with (model_dir / "scaler.joblib").open("wb") as f:
+        pickle.dump(scaler, f)
+    (model_dir / "metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def train(
+    csv_path: Path = DEFAULT_CSV_PATH,
+    model_dir: Path = DEFAULT_MODEL_DIR,
+    epochs: int = 10,
+    batch_size: int = 32,
+) -> None:
+    """Train the default model and save model/scaler/metadata artifacts."""
+    import tensorflow as tf
+
+    gpus = tf.config.list_physical_devices("GPU")
     if gpus:
         try:
             for gpu in gpus:
@@ -61,20 +93,32 @@ def train():
         print("[INFO] 사용 가능한 GPU가 없습니다.")
 
     print("[INFO] 데이터 로딩 중...")
-    df = load_data()
+    df = load_data(csv_path)
 
     print("[INFO] 전처리 및 데이터셋 구성 중...")
-    X, y, scaler = preprocess_data(df)
+    x_values, y_values, scaler = preprocess_data(df)
 
-    print(f"[INFO] 학습 데이터: X={X.shape}, y={y.shape}")
+    print(f"[INFO] 학습 데이터: X={x_values.shape}, y={y_values.shape}")
     model = build_model((SEQ_LENGTH, 1), output_dim=len(PRED_OFFSETS))
 
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    checkpoint = ModelCheckpoint(MODEL_PATH, save_best_only=True, monitor='loss')
+    model_dir.mkdir(parents=True, exist_ok=True)
 
     print("[INFO] 모델 학습 시작...")
-    model.fit(X, y, epochs=10, batch_size=32, callbacks=[checkpoint])
-    print(f"[INFO] 학습 완료. 모델 저장됨: {MODEL_PATH}")
+    model.fit(x_values, y_values, epochs=epochs, batch_size=batch_size)
+
+    metadata = {
+        "symbol": settings.symbol,
+        "interval": settings.interval,
+        "seq_length": SEQ_LENGTH,
+        "pred_offsets": PRED_OFFSETS,
+        "feature_columns": ["close"],
+        "target": "close",
+        "scaler": "MinMaxScaler",
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_artifacts(model, scaler, model_dir, metadata)
+    print(f"[INFO] 학습 완료. 모델 저장됨: {model_dir}")
+
 
 if __name__ == "__main__":
     train()

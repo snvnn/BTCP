@@ -4,15 +4,24 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
+from btcp.config import settings
+
 app = FastAPI()
 
-MODEL_PATH = Path(__file__).resolve().parents[1] / "model" / "lstm_model.h5"
+MODEL_PATH = settings.model_path
 
 
 def is_model_available(path: Path | None = None) -> bool:
     """Return whether the trained model artifact is a regular file."""
     artifact_path = path or MODEL_PATH
     return artifact_path.is_file()
+
+
+def get_recent_prices(symbol: str, interval: str, lookback: int):
+    """Fetch recent prices lazily so health endpoints do not require data dependencies."""
+    from btcp.data import collector
+
+    return collector.get_recent_prices(symbol=symbol, interval=interval, lookback=lookback)
 
 
 @app.get("/")
@@ -37,38 +46,44 @@ def model_status():
 
 @app.get("/predict")
 def predict_price():
-    """
-    1. 실시간 시세를 수집
-    2. 전처리 (정규화)
-    3. 모델 예측
-    4. 결과 반환
-    """
+    """Fetch recent prices and return horizon-based model predictions."""
     if not is_model_available():
         raise HTTPException(status_code=503, detail="model_not_ready")
 
-    from btcp.data import collector
     from btcp.model import inference
-    from btcp.utils import preprocessor
 
-    model = inference.load_trained_model(MODEL_PATH)
+    try:
+        artifacts = inference.load_inference_artifacts()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="model_not_ready") from exc
 
-    # 1. 실시간 시세 수집
-    price_data = collector.get_recent_prices()
+    metadata = artifacts.metadata
+    seq_length = int(metadata.get("seq_length", settings.seq_length))
+    pred_offsets = metadata.get("pred_offsets", [5, 15, 30, 60])
+
+    symbol = metadata.get("symbol", settings.symbol)
+    interval = metadata.get("interval", settings.interval)
+    price_data = get_recent_prices(symbol=symbol, interval=interval, lookback=seq_length)
     prices = price_data["prices"]
+    predictions = inference.predict_with_scaler(
+        model=artifacts.model,
+        scaler=artifacts.scaler,
+        prices=prices,
+        pred_offsets=pred_offsets,
+        seq_length=seq_length,
+    )
 
-    # 2. 전처리 (여기선 단순 정규화)
-    normed_input, mean, std = preprocessor.normalize(prices)
-
-    # 3. 모델 예측
-    predicted = inference.predict(model=model, input_data=normed_input)
-
-    # 4. 결과 반환
     return {
+        "symbol": symbol,
+        "interval": interval,
         "timestamp": str(price_data["timestamp"]),
-        "input_prices": prices,
-        "normalized": normed_input.tolist(),
-        "predicted": predicted.tolist() if hasattr(predicted, "tolist") else predicted,
-        "denormalized_prediction": (predicted * std + mean).tolist()
-        if hasattr(predicted, "tolist")
-        else float(predicted * std + mean),
+        "input": {
+            "seq_length": seq_length,
+            "last_price": float(prices[-1]),
+        },
+        "predictions": predictions,
+        "model": {
+            "artifact": str(settings.model_dir),
+            "trained_at": metadata.get("trained_at"),
+        },
     }

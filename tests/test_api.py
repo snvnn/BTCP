@@ -104,3 +104,27 @@ def test_predict_returns_503_when_artifact_bundle_is_incomplete(monkeypatch, tmp
 
     assert response.status_code == 503
     assert response.json() == {"detail": "model_not_ready"}
+
+
+def test_paper_status_start_stop_and_tick():
+    client.post("/paper/stop")
+
+    status = client.get("/paper/status")
+    assert status.status_code == 200
+    assert status.json()["running"] is False
+
+    started = client.post("/paper/start", params={"initial_cash": 1000.0, "threshold": 0.01})
+    assert started.status_code == 200
+    assert started.json()["running"] is True
+
+    tick = client.post("/paper/tick", params={"current_price": 100.0, "predicted_price": 102.0})
+    assert tick.status_code == 200
+    assert tick.json()["signal"] == "buy"
+
+    trades = client.get("/paper/trades")
+    assert trades.status_code == 200
+    assert len(trades.json()["trades"]) == 1
+
+    stopped = client.post("/paper/stop")
+    assert stopped.status_code == 200
+    assert stopped.json()["running"] is False

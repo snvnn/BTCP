@@ -5,10 +5,13 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 
 from btcp.config import settings
+from btcp.api.serializers import jsonable
+from btcp.trading.paper import PaperTradingEngine
 
 app = FastAPI()
 
 MODEL_PATH = settings.model_path
+paper_engine = PaperTradingEngine()
 
 
 def is_model_available(path: Path | None = None) -> bool:
@@ -42,6 +45,52 @@ def model_status():
         return {"model_loaded": False, "reason": "model artifact not found"}
 
     return {"model_loaded": True, "artifact_path": str(MODEL_PATH)}
+
+
+@app.post("/paper/start")
+def paper_start(
+    initial_cash: float = 10_000.0,
+    threshold: float = 0.01,
+    trade_fraction: float = 0.5,
+    fee_rate: float = 0.001,
+):
+    """Start a fresh in-memory paper trading session."""
+    global paper_engine
+    paper_engine = PaperTradingEngine(
+        initial_cash=initial_cash,
+        threshold=threshold,
+        trade_fraction=trade_fraction,
+        fee_rate=fee_rate,
+    )
+    paper_engine.start()
+    return paper_engine.status()
+
+
+@app.post("/paper/stop")
+def paper_stop():
+    """Stop the in-memory paper trading session."""
+    paper_engine.stop()
+    return paper_engine.status()
+
+
+@app.get("/paper/status")
+def paper_status(current_price: float | None = None):
+    """Return the current paper trading status."""
+    return paper_engine.status(current_price=current_price)
+
+
+@app.get("/paper/trades")
+def paper_trades():
+    """Return simulated paper trading fills."""
+    return {"trades": jsonable(paper_engine.trades)}
+
+
+@app.post("/paper/tick")
+def paper_tick(current_price: float, predicted_price: float):
+    """Process one manual paper-trading tick."""
+    return jsonable(
+        paper_engine.on_tick(current_price=current_price, predicted_price=predicted_price)
+    )
 
 
 @app.get("/predict")

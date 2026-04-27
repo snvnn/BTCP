@@ -1,9 +1,15 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.h5
+*.keras
+*.joblib
 .DS_Store
-/data/BTCUSDT_1m_full.csv
+/.hermes/
 /.idea/
+/artifacts/
+/data/*.csv
+/data/BTCUSDT_1m_full.csv
 /bfg-1.14.0.jar
 /btc_prices.csv
